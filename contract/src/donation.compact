@@ -1,0 +1,70 @@
+// Privacy-Preserving Midnight Donation & Crowdfunding Smart Contract
+//
+// PRIVACY MODEL:
+// 1. Public Data (Ledger State):
+//    - totalDonated: Uint<64> - Aggregate donation total accumulated by the campaign.
+//    - donationCount: Counter - Total number of donations received so far.
+//    - campaignGoal: Uint<64> - Target funding goal for the campaign.
+//    - campaignTitle: Opaque<"string"> - Campaign title/description metadata.
+//    - state: CampaignState - Current campaign status (ACTIVE vs COMPLETED).
+//    - lastDonationCommitment: Bytes<32> - Cryptographic commitment of the latest donation record.
+//
+// 2. Private Data (Witnesses):
+//    - localDonorSecretKey: Bytes<32> - Donor's private key / identity secret.
+//
+// 3. Privacy Guarantees:
+//    - Individual donor identities and private notes remain hidden on-chain.
+//    - Only a zero-knowledge commitment (public key hash) is disclosed using disclose().
+//    - The contract verifies valid donation state transitions without exposing sensitive donor credentials.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum CampaignState {
+  ACTIVE,
+  COMPLETED
+}
+
+export ledger state: CampaignState;
+export ledger campaignGoal: Uint<64>;
+export ledger totalDonated: Uint<64>;
+export ledger donationCount: Counter;
+export ledger campaignTitle: Opaque<"string">;
+export ledger lastDonationCommitment: Bytes<32>;
+
+constructor(title: Opaque<"string">, goal: Uint<64>) {
+  state = CampaignState.ACTIVE;
+  campaignTitle = disclose(title);
+  campaignGoal = disclose(goal);
+  totalDonated = 0;
+  donationCount.increment(1);
+  lastDonationCommitment = pad(32, "genesis:donation:commitment");
+}
+
+witness localDonorSecretKey(): Bytes<32>;
+
+export circuit donate(amount: Uint<64>, noteCommitment: Bytes<32>): [] {
+  assert(state == CampaignState.ACTIVE, "Donation campaign is not active");
+  assert(amount > 0, "Donation amount must be greater than zero");
+
+  const donorPk = disclose(donorPublicKey(localDonorSecretKey(), donationCount as Field as Bytes<32>));
+  const newCommitment = disclose(persistentHash<Vector<4, Bytes<32>>>([
+    donorPk,
+    pad(32, "donation:note"),
+    noteCommitment,
+    lastDonationCommitment
+  ]));
+
+  lastDonationCommitment = newCommitment;
+  totalDonated = disclose((totalDonated + amount) as Uint<64>);
+  donationCount.increment(1);
+
+  if (totalDonated >= campaignGoal) {
+    state = CampaignState.COMPLETED;
+  }
+}
+
+export circuit donorPublicKey(sk: Bytes<32>, sequence: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "donation:donor:pk:"), sequence, sk]);
+}
