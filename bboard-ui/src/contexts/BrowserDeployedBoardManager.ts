@@ -1,23 +1,9 @@
-// This file is part of midnightntwrk/example-bboard.
-// Copyright (C) Midnight Foundation
-// SPDX-License-Identifier: Apache-2.0
-// Licensed under the Apache License, Version 2.0 (the "License");
-// You may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// Privacy-Preserving Midnight Donation DApp Browser Manager
 import {
-  BBoardAPI,
-  type BBoardCircuitKeys,
-  type BBoardProviders,
-  type DeployedBBoardAPI,
+  DonationAPI,
+  type DonationCircuitKeys,
+  type DonationProviders,
+  type DeployedDonationAPI,
 } from '../../../api/src/index';
 import { type ContractAddress, fromHex, toHex } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import {
@@ -49,104 +35,51 @@ import {
   Transaction,
   TransactionId,
 } from '@midnight-ntwrk/midnight-js-protocol/ledger';
-import { BBoardPrivateState } from '@midnight-ntwrk/bboard-contract';
+import { DonationPrivateState } from '@midnight-ntwrk/donation-contract';
 import { inMemoryPrivateStateProvider } from '../in-memory-private-state-provider';
 import { NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import type { UnboundTransaction } from '@midnight-ntwrk/midnight-js-types';
+import { CONTRACT_ADDRESS } from '../config/contract';
 
-/**
- * An in-progress bulletin board deployment.
- */
 export interface InProgressBoardDeployment {
   readonly status: 'in-progress';
 }
 
-/**
- * A deployed bulletin board deployment.
- */
 export interface DeployedBoardDeployment {
   readonly status: 'deployed';
-
-  /**
-   * The {@link DeployedBBoardAPI} instance when connected to an on network bulletin board contract.
-   */
-  readonly api: DeployedBBoardAPI;
+  readonly api: DeployedDonationAPI;
 }
 
-/**
- * A failed bulletin board deployment.
- */
 export interface FailedBoardDeployment {
   readonly status: 'failed';
-
-  /**
-   * The error that caused the deployment to fail.
-   */
   readonly error: Error;
 }
 
-/**
- * A bulletin board deployment.
- */
 export type BoardDeployment = InProgressBoardDeployment | DeployedBoardDeployment | FailedBoardDeployment;
 
-/**
- * Provides access to bulletin board deployments.
- */
 export interface DeployedBoardAPIProvider {
-  /**
-   * Gets the observable set of board deployments.
-   *
-   * @remarks
-   * This property represents an observable array of {@link BoardDeployment}, each also an
-   * observable. Changes to the array will be emitted as boards are resolved (deployed or joined),
-   * while changes to each underlying board can be observed via each item in the array.
-   */
   readonly boardDeployments$: Observable<Array<Observable<BoardDeployment>>>;
-
-  /**
-   * Joins or deploys a bulletin board contract.
-   *
-   * @param contractAddress An optional contract address to use when resolving.
-   * @returns An observable board deployment.
-   *
-   * @remarks
-   * For a given `contractAddress`, the method will attempt to find and join the identified bulletin board
-   * contract; otherwise it will attempt to deploy a new one.
-   */
   readonly resolve: (contractAddress?: ContractAddress) => Observable<BoardDeployment>;
 }
 
-/**
- * A {@link DeployedBoardAPIProvider} that manages bulletin board deployments in a browser setting.
- *
- * @remarks
- * {@link BrowserDeployedBoardManager} configures and manages a connection to the Midnight Lace
- * wallet, along with a collection of additional providers that work in a web-browser setting.
- */
 export class BrowserDeployedBoardManager implements DeployedBoardAPIProvider {
   readonly #boardDeploymentsSubject: BehaviorSubject<Array<BehaviorSubject<BoardDeployment>>>;
-  #initializedProviders: Promise<BBoardProviders> | undefined;
+  #initializedProviders: Promise<DonationProviders> | undefined;
 
-  /**
-   * Initializes a new {@link BrowserDeployedBoardManager} instance.
-   *
-   * @param logger The `pino` logger to for logging.
-   */
   constructor(private readonly logger: Logger) {
     this.#boardDeploymentsSubject = new BehaviorSubject<Array<BehaviorSubject<BoardDeployment>>>([]);
     this.boardDeployments$ = this.#boardDeploymentsSubject;
   }
 
-  /** @inheritdoc */
   readonly boardDeployments$: Observable<Array<Observable<BoardDeployment>>>;
 
-  /** @inheritdoc */
   resolve(contractAddress?: ContractAddress): Observable<BoardDeployment> {
+    const targetAddress = contractAddress || (CONTRACT_ADDRESS !== "<YOUR_DEPLOYED_CONTRACT_ADDRESS>" ? CONTRACT_ADDRESS : undefined);
+
     const deployments = this.#boardDeploymentsSubject.value;
     let deployment = deployments.find(
       (deployment) =>
-        deployment.value.status === 'deployed' && deployment.value.api.deployedContractAddress === contractAddress,
+        deployment.value.status === 'deployed' && deployment.value.api.deployedContractAddress === targetAddress,
     );
 
     if (deployment) {
@@ -157,8 +90,8 @@ export class BrowserDeployedBoardManager implements DeployedBoardAPIProvider {
       status: 'in-progress',
     });
 
-    if (contractAddress) {
-      void this.joinDeployment(deployment, contractAddress);
+    if (targetAddress) {
+      void this.joinDeployment(deployment, targetAddress);
     } else {
       void this.deployDeployment(deployment);
     }
@@ -168,20 +101,14 @@ export class BrowserDeployedBoardManager implements DeployedBoardAPIProvider {
     return deployment;
   }
 
-  private getProviders(): Promise<BBoardProviders> {
-    // We use a cached `Promise` to hold the providers. This will:
-    //
-    // 1. Cache and re-use the providers (including the configured connector API), and
-    // 2. Act as a synchronization point if multiple contract deploys or joins run concurrently.
-    //    Concurrent calls to `getProviders()` will receive, and ultimately await, the same
-    //    `Promise`.
+  private getProviders(): Promise<DonationProviders> {
     return this.#initializedProviders ?? (this.#initializedProviders = initializeProviders(this.logger));
   }
 
   private async deployDeployment(deployment: BehaviorSubject<BoardDeployment>): Promise<void> {
     try {
       const providers = await this.getProviders();
-      const api = await BBoardAPI.deploy(providers, this.logger);
+      const api = await DonationAPI.deploy(providers, 'Midnight Community Privacy Fund', BigInt(1000000), this.logger);
 
       deployment.next({
         status: 'deployed',
@@ -201,7 +128,7 @@ export class BrowserDeployedBoardManager implements DeployedBoardAPIProvider {
   ): Promise<void> {
     try {
       const providers = await this.getProviders();
-      const api = await BBoardAPI.join(providers, contractAddress, this.logger);
+      const api = await DonationAPI.join(providers, contractAddress, this.logger);
 
       deployment.next({
         status: 'deployed',
@@ -216,17 +143,16 @@ export class BrowserDeployedBoardManager implements DeployedBoardAPIProvider {
   }
 }
 
-/** @internal */
-const initializeProviders = async (logger: Logger): Promise<BBoardProviders> => {
-  const networkId = import.meta.env.VITE_NETWORK_ID as NetworkId;
+const initializeProviders = async (logger: Logger): Promise<DonationProviders> => {
+  const networkId = (import.meta.env.VITE_NETWORK_ID || 'preprod') as NetworkId;
   const connectedAPI = await connectToWallet(logger, networkId);
-  const zkConfigPath = window.location.origin; // '../../../contract/src/managed/bboard';
-  const keyMaterialProvider = new FetchZkConfigProvider<BBoardCircuitKeys>(zkConfigPath, fetch.bind(window));
+  const zkConfigPath = window.location.origin;
+  const keyMaterialProvider = new FetchZkConfigProvider<DonationCircuitKeys>(zkConfigPath, fetch.bind(window));
   const config = await connectedAPI.getConfiguration();
-  const inMemoryBBoardPrivateStateProvider = inMemoryPrivateStateProvider<string, BBoardPrivateState>();
+  const inMemoryDonationPrivateStateProvider = inMemoryPrivateStateProvider<string, DonationPrivateState>();
   const shieldedAddresses = await connectedAPI.getShieldedAddresses();
   return {
-    privateStateProvider: inMemoryBBoardPrivateStateProvider,
+    privateStateProvider: inMemoryDonationPrivateStateProvider,
     zkConfigProvider: keyMaterialProvider,
     proofProvider: httpClientProofProvider(config.proverServerUri!, keyMaterialProvider),
     publicDataProvider: indexerPublicDataProvider(config.indexerUri, config.indexerWsUri),
@@ -258,7 +184,7 @@ const initializeProviders = async (logger: Logger): Promise<BBoardProviders> => 
       submitTx: async (tx: FinalizedTransaction): Promise<TransactionId> => {
         await connectedAPI.submitTransaction(toHex(tx.serialize()));
         const txIdentifiers = tx.identifiers();
-        const txId = txIdentifiers[0]; // Return the first transaction ID
+        const txId = txIdentifiers[0];
         logger.info({ txIdentifiers }, 'Submitted transaction via wallet');
         return txId;
       },
@@ -266,7 +192,6 @@ const initializeProviders = async (logger: Logger): Promise<BBoardProviders> => 
   };
 };
 
-/** @internal */
 const getFirstCompatibleWallet = (): InitialAPI | undefined => {
   if (!window.midnight) return undefined;
   return Object.values(window.midnight).find(
@@ -280,7 +205,6 @@ const getFirstCompatibleWallet = (): InitialAPI | undefined => {
 
 const COMPATIBLE_CONNECTOR_API_VERSION = '4.x';
 
-/** @internal */
 const connectToWallet = (logger: Logger, networkId: string): Promise<ConnectedAPI> => {
   return firstValueFrom(
     fnPipe(
@@ -299,7 +223,6 @@ const connectToWallet = (logger: Logger, networkId: string): Promise<ConnectedAP
         with: () =>
           throwError(() => {
             logger.error('Could not find wallet connector API');
-
             return new Error('Could not find Midnight Lace wallet. Extension installed?');
           }),
       }),
@@ -314,7 +237,6 @@ const connectToWallet = (logger: Logger, networkId: string): Promise<ConnectedAP
         with: () =>
           throwError(() => {
             logger.error('Wallet connector API has failed to respond');
-
             return new Error('Midnight Lace wallet has failed to respond. Extension enabled?');
           }),
       }),

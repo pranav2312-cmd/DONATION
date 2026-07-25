@@ -1,45 +1,53 @@
-// This file is part of midnightntwrk/example-bboard.
-// Copyright (C) Midnight Foundation
-// SPDX-License-Identifier: Apache-2.0
-// Licensed under the Apache License, Version 2.0 (the "License");
-// You may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// Privacy-Preserving Midnight Donation Header Component
 import React from 'react';
-import { AppBar, Box } from '@mui/material';
+import { AppBar, Box, Typography, Chip } from '@mui/material';
+import LockIcon from '@mui/icons-material/Lock';
 
-/**
- * A simple application level header for the bulletin board application.
- */
 export const Header: React.FC = () => (
   <AppBar
     position="static"
     data-testid="header"
     sx={{
-      backgroundColor: '#000',
+      backgroundColor: '#0a0a14',
+      borderBottom: '1px solid rgba(138, 43, 226, 0.3)',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      px: { xs: 2, md: 6 },
+      py: 1.5,
     }}
   >
     <Box
       sx={{
         display: 'flex',
-        px: 10,
-        py: 2.2,
         alignItems: 'center',
+        gap: 2,
       }}
       data-testid="header-logo"
     >
-      <img src="/midnight-logo.png" alt="logo-image" height={66} />
+      <img src="/midnight-logo.png" alt="Midnight Logo" height={45} />
+      <Box>
+        <Typography variant="h6" sx={{ color: '#fff', lineHeight: 1.2, fontWeight: 'bold' }}>
+          Midnight Donation DApp
+        </Typography>
+        <Typography variant="caption" sx={{ color: '#00e5ff' }}>
+          Rise In Level 1 Challenge • Privacy-Preserving Crowdfunding
+        </Typography>
+      </Box>
+    </Box>
+
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Chip
+        icon={<LockIcon style={{ color: '#00e5ff', fontSize: 16 }} />}
+        label="Midnight Preprod ZK Network"
+        variant="outlined"
+        sx={{
+          color: '#b388ff',
+          borderColor: 'rgba(138, 43, 226, 0.5)',
+          backgroundColor: 'rgba(138, 43, 226, 0.1)',
+          fontWeight: 'bold',
+        }}
+      />
     </Box>
   </AppBar>
 );
